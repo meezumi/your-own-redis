@@ -48,6 +48,57 @@ function parseRESP(data) {
   return parse();
 }
 
+// Parse RESP and track consumed bytes
+function parseRESPFromBuffer(buffer) {
+  let pos = 0;
+
+  function readUntilCRLF() {
+    const idx = buffer.indexOf("\r\n", pos);
+    if (idx === -1) return null;
+    const line = buffer.slice(pos, idx);
+    pos = idx + 2;
+    return line;
+  }
+
+  function parse() {
+    const line = readUntilCRLF();
+    if (line === null) return null;
+
+    const type = line[0];
+
+    if (type === "*") {
+      const count = parseInt(line.slice(1));
+      const arr = [];
+      for (let j = 0; j < count; j++) {
+        const item = parse();
+        if (item === null) return null;
+        arr.push(item);
+      }
+      return arr;
+    } else if (type === "$") {
+      const length = parseInt(line.slice(1));
+      if (length === -1) return null;
+      
+      if (pos + length + 2 > buffer.length) return null;
+      
+      const str = buffer.slice(pos, pos + length).toString();
+      pos += length + 2; // +2 for \r\n
+      return str;
+    } else if (type === "+") {
+      return line.slice(1);
+    } else if (type === ":") {
+      return parseInt(line.slice(1));
+    } else if (type === "-") {
+      return new Error(line.slice(1));
+    }
+  }
+
+  const parsed = parse();
+  if (parsed === null) return null;
+
+  return { parsed, consumed: pos };
+}
+
 // Format RESP response
 function formatRESP(value) {
   if (value === null) {
@@ -103,19 +154,80 @@ function handleCommand(cmd) {
       }
       return store[args[0]] || null;
 
+    case "DEL":
+      if (args.length === 0) {
+        return new Error("ERR wrong number of arguments for 'del' command");
+      }
+      let deleteCount = 0;
+      for (const k of args) {
+        if (k in store) {
+          delete store[k];
+          deleteCount++;
+        }
+      }
+      return deleteCount;
+
+    case "EXISTS":
+      if (args.length === 0) {
+        return new Error("ERR wrong number of arguments for 'exists' command");
+      }
+      let existsCount = 0;
+      for (const k of args) {
+        if (k in store) {
+          existsCount++;
+        }
+      }
+      return existsCount;
+
+    case "KEYS":
+      if (args.length === 0) {
+        return new Error("ERR wrong number of arguments for 'keys' command");
+      }
+      const pattern = args[0];
+      const keys = Object.keys(store);
+      
+      if (pattern === "*") {
+        return keys;
+      }
+      
+      // Simple pattern matching: * matches any characters
+      const regex = new RegExp(`^${pattern.replace(/\*/g, ".*")}$`);
+      return keys.filter(k => regex.test(k));
+
+    case "DBSIZE":
+      return Object.keys(store).length;
+
     default:
       return new Error(`ERR unknown command '${command}'`);
   }
 }
 
 const server = net.createServer((connection) => {
+  let buffer = "";
+
   connection.on("data", (data) => {
-    try {
-      const command = parseRESP(data);
-      const response = handleCommand(command);
-      connection.write(formatRESP(response));
-    } catch (err) {
-      connection.write(formatRESP(new Error("ERR Protocol error")));
+    buffer += data.toString();
+
+    // Process all complete commands in the buffer
+    while (buffer.length > 0) {
+      try {
+        // Find the end of a complete RESP message
+        const command = parseRESPFromBuffer(buffer);
+        if (command === null) {
+          // Incomplete command, wait for more data
+          break;
+        }
+
+        const { parsed, consumed } = command;
+        buffer = buffer.slice(consumed);
+
+        const response = handleCommand(parsed);
+        connection.write(formatRESP(response));
+      } catch (err) {
+        connection.write(formatRESP(new Error("ERR Protocol error")));
+        buffer = "";
+        break;
+      }
     }
   });
 
