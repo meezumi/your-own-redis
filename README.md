@@ -104,7 +104,36 @@ redis-cli keys "key*"
 # Output: key1, key2
 ```
 
-### Using netcat (alternative to redis-cli)
+### List Operations
+
+```bash
+# Push elements to a list
+redis-cli rpush mylist "apple"
+redis-cli rpush mylist "banana"
+redis-cli rpush mylist "orange"
+# Output: (integer) 3
+
+# Get list length
+redis-cli llen mylist
+# Output: (integer) 3
+
+# Get range of elements
+redis-cli lrange mylist 0 -1
+# Output: apple, banana, orange
+
+# Push to head (left)
+redis-cli lpush mylist "grapes"
+redis-cli lrange mylist 0 -1
+# Output: grapes, apple, banana, orange
+
+# Pop from ends
+redis-cli lpop mylist
+# Output: grapes
+redis-cli rpop mylist
+# Output: orange
+redis-cli lrange mylist 0 -1
+# Output: apple, banana
+```
 
 ```bash
 echo -e "PING\r" | nc localhost 6379
@@ -146,15 +175,24 @@ your-own-redis/
 | EXISTS | `EXISTS key [key ...]` | Checks if keys exist |
 | KEYS | `KEYS pattern` | Finds all keys matching pattern (* for all) |
 | DBSIZE | `DBSIZE` | Returns the number of keys in the database |
+| LPUSH | `LPUSH key value [value ...]` | Pushes elements to the head of a list |
+| RPUSH | `RPUSH key value [value ...]` | Pushes elements to the tail of a list |
+| LPOP | `LPOP key` | Pops an element from the head of a list |
+| RPOP | `RPOP key` | Pops an element from the tail of a list |
+| LLEN | `LLEN key` | Returns the length of a list |
+| LRANGE | `LRANGE key start end` | Returns elements from a list by range (supports negative indices) |
 
 ## Future Enhancements
 
-- [ ] Data structure support (Lists, Sets, Hashes, Sorted Sets)
+- [x] List support (LPUSH, RPUSH, LPOP, RPOP, LRANGE, LLEN)
+- [ ] Hash support (HSET, HGET, HGETALL, HDEL, HKEYS, HVALS)
+- [ ] Set support (SADD, SREM, SMEMBERS, SINTER, SUNION)
+- [ ] Sorted Set support (ZADD, ZRANGE, ZRANK)
 - [ ] Key expiration (EXPIRE, TTL)
 - [ ] Transactions (MULTI, EXEC)
 - [ ] Persistence (RDB snapshots, AOF logs)
 - [ ] Pub/Sub functionality
-- [ ] Additional string operations (APPEND, STRLEN, GETRANGE)
+- [ ] Additional string operations (APPEND, STRLEN, GETRANGE, INCR, DECR)
 
 ## Testing
 
